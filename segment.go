@@ -1,5 +1,9 @@
 package sstable
 
+import (
+	"slices"
+)
+
 type Record struct {
 	Key   string
 	Value int
@@ -20,10 +24,15 @@ func NewSegment(r ...Record) *Segment {
 }
 
 func Compact(s *Segment) *Segment {
-	want := NewSegment(
-		NewRecord("yawn", 522),
-		NewRecord("mew", 1082),
-		NewRecord("purr", 2108),
-	)
-	return want
+	var res Segment
+	for _, rec := range s.records {
+		if i := slices.IndexFunc(res.records, func(r Record) bool {
+			return r.Key == rec.Key
+		}); i == -1 {
+			res.records = append(res.records, rec)
+		} else {
+			res.records[i] = rec
+		}
+	}
+	return &res
 }
