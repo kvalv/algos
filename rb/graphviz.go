@@ -15,6 +15,14 @@ func Graphviz(t Tree, fname string) {
 			src := n.Parent.String()
 			dst := n.String()
 			fmt.Fprintf(s, "%s -> %s\n", src, dst)
+
+			var color string
+			if n.Color == RED {
+				color = "red"
+			} else {
+				color = "black"
+			}
+			fmt.Fprintf(s, "%d [color=%q]\n", n.Key, color)
 		}
 		fmt.Printf("node %s", n.String())
 	})
@@ -28,7 +36,6 @@ func Graphviz(t Tree, fname string) {
 	}
 	// defer f.Close()
 	f.WriteString(s.String())
-	f.Close()
 
 	if err := exec.Command("dot", "-Tpng", dotFile, "-o", fname).Run(); err != nil {
 		panic(err)

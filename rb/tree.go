@@ -35,6 +35,10 @@ const (
 	BLACK
 )
 
+var (
+	SENTINEL = &Node{Color: BLACK}
+)
+
 func (t *Tree) LeftRotate(x *Node) {
 	y := x.Right
 
@@ -99,7 +103,7 @@ func (t *Tree) Walk(f func(n *Node)) {
 	t.Root.walk(f)
 }
 func (n *Node) walk(f func(n *Node)) {
-	if n == nil {
+	if n == nil || n == SENTINEL {
 		return
 	}
 	fmt.Printf("walk: %d\n", n.Key)
@@ -109,24 +113,79 @@ func (n *Node) walk(f func(n *Node)) {
 }
 
 func (t *Tree) insert(key int) {
-	// start naive for now
-	n := t.Root
-	var par *Node
+	// var par *Node
+	par := SENTINEL
+	x := t.Root
+	z := &Node{Key: key, Color: RED, Left: SENTINEL, Right: SENTINEL, Parent: SENTINEL}
 
-	for n != nil {
-		par = n
-		if n.Key > key {
-			n = n.Left
+	for x != nil && x != SENTINEL {
+		par = x
+		if z.Key < x.Key {
+			x = x.Left
 		} else {
-			n = n.Right
+			x = x.Right
 		}
 	}
-	x := &Node{Key: key, Parent: par}
-	if par == nil {
-		t.Root = x
-	} else if par.Key > key {
-		par.Left = x
+	z.Parent = par
+	if par == SENTINEL {
+		t.Root = z
+	} else if par.Key > z.Key {
+		par.Left = z
 	} else {
-		par.Right = x
+		par.Right = z
 	}
+	// ^ ... so just regular BST insert, but with a correction step at the end.
+	// no sentinel T.nil is used, but maybe we need to.
+	t.InsertFixup(z)
+}
+
+func (t *Tree) InsertFixup(z *Node) {
+	for z.Parent.Color == RED {
+		if z.Parent == z.Parent.Parent.Left {
+			y := z.Parent.Parent.Right // uncle
+			if y.Color == RED {        // case 1: uncle is red; recolor father and uncle
+				z.Parent.Color = BLACK
+				y.Color = BLACK
+				z.Parent.Parent.Color = RED
+				z = z.Parent.Parent
+			} else {
+				if z == z.Parent.Right { // case 2
+					z = z.Parent
+					t.LeftRotate(z)
+				}
+				z.Parent.Color = BLACK
+				z.Parent.Parent.Color = RED
+				t.RightRotate(z.Parent.Parent)
+			}
+		} else {
+			// mirrored version??
+			y := z.Parent.Parent.Left // uncle
+			if y.Color == RED {       // case 1: uncle is red; recolor father and uncle
+				z.Parent.Color = BLACK
+				y.Color = BLACK
+				z.Parent.Parent.Color = RED
+				z = z.Parent.Parent
+			} else {
+				if z == z.Parent.Left { // case 2
+					z = z.Parent
+					t.RightRotate(z)
+				}
+				z.Parent.Color = BLACK
+				z.Parent.Parent.Color = RED
+				t.LeftRotate(z.Parent.Parent)
+			}
+		}
+	}
+	t.Root.Color = BLACK
+}
+
+func (t *Tree) Transplant(u, v *Node) {
+	if u.Parent == SENTINEL {
+		t.Root = v
+	} else if u.Parent.Left == u {
+		u.Parent.Left = v
+	} else {
+		u.Parent.Right = v
+	}
+	v.Parent = u.Parent
 }

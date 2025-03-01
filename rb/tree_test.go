@@ -1,6 +1,8 @@
 package rb
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestRotate(t *testing.T) {
 	var orig, rotated Tree
@@ -25,6 +27,12 @@ func TestRotate(t *testing.T) {
 	rotated.RightRotate(rotated.Find(4))
 	expectOrder(t, &rotated, wantOrder)
 	// Graphviz(rotated, "/tmp/origxy.png")
+}
+
+func TestInsert(t *testing.T) {
+	var tree Tree
+	tree.Insert(1, 2, 4, 5, 8, 7, 11, 14, 15)
+	Graphviz(tree, "/tmp/origxc.png")
 }
 
 func expectOrder(t *testing.T, tree *Tree, want []int) {
