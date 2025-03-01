@@ -1,13 +1,21 @@
 package btree
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 )
 
 type BTree struct {
-	log  *slog.Logger
-	Root *Node
+	log   *slog.Logger
+	Root  *Node
+	stats Stats
+}
+
+// Keep statistics about read / write access
+type Stats struct {
+	Reads, Writes int
 }
 
 func New(root *Node, w io.Writer) *BTree {
@@ -27,17 +35,28 @@ func Create(w io.Writer) *BTree {
 }
 
 func (b *BTree) allocate() *Node {
-	b.log.Info("Allocate-Node")
+	b.log.Debug("Allocate-Node")
 	return &Node{}
 }
 func (b *BTree) read(n *Node, i int) *Node {
 	c := n.Children[i]
-	b.log.Info("Disk read", "node", c)
+	_, med := n.median()
+	b.log.Debug("Disk read", "node", keyString(med))
+	b.stats.Reads++
 	return c
 }
 func (b *BTree) write(n *Node) *Node {
-	b.log.Info("Disk write", "node", n)
+	_, med := n.median()
+	b.log.Debug("Disk write", "node", keyString(med))
+	b.stats.Writes++
 	return n
+}
+
+// x.Children[i] is assumed full; x is assumed non-full. We split the child and
+// put the median key into x
+func (b *BTree) SplitChild(x *Node, i int) {
+	// c := b.read(x, i)
+	// idx, k := c.median()
 }
 
 func (b *BTree) Search(n *Node, key int) (*Node, int) {
@@ -61,16 +80,60 @@ func (b *BTree) Search(n *Node, key int) (*Node, int) {
 	return b.Search(c, key)
 }
 
+func (b *BTree) Walk(n *Node, f func(key int)) {
+	if n == nil {
+		return
+	}
+	for i, key := range n.Keys {
+		if !n.Leaf {
+			c := b.read(n, i)
+			b.Walk(c, f)
+		}
+		f(key)
+	}
+	if !n.Leaf {
+		c := b.read(n, len(n.Keys))
+		b.Walk(c, f)
+	}
+}
+func (b *BTree) Keys() []int {
+	var res []int
+	b.Walk(b.Root, func(key int) {
+		res = append(res, key)
+	})
+	return res
+}
+
 type Node struct {
 	Leaf     bool
 	Keys     []int
 	Children []*Node
 }
 
-func (n *Node) String() string {
-	var letters string
+func (b *BTree) String(n *Node) string {
+	var s strings.Builder
+	s.WriteString("(")
 	for _, k := range n.Keys {
-		letters += string(rune(k))
+		s.WriteString(keyString(k))
 	}
-	return letters
+	for i := range n.Children {
+		c := b.read(n, i)
+		fmt.Fprintf(&s, "%s", b.String(c))
+	}
+	s.WriteString(")")
+
+	return s.String()
+}
+
+func (n *Node) median() (index int, key int) {
+	index = len(n.Keys) / 2
+	key = n.Keys[index]
+	return
+}
+
+func keyString(k int) string {
+	if k >= 'A' && k <= 'Z' || k >= 'a' && k <= 'z' {
+		return fmt.Sprintf("%c", k)
+	}
+	return fmt.Sprintf("%d", k)
 }
