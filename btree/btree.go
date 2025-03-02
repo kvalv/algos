@@ -128,7 +128,12 @@ func (T *BTree) validate() {
 			panic(fmt.Sprintf("node %s has %d keys", n, len(n.Keys)))
 		}
 		if !n.Leaf && len(n.Keys)+1 != len(n.Children) {
-			panic(fmt.Sprintf("node %s has %d keys but %d children", n, len(n.Keys), len(n.Children)))
+			panic(fmt.Sprintf("BTree violation: node %s has %d and %d children - expected %d children",
+				n,
+				len(n.Keys),
+				len(n.Children),
+				len(n.Keys)+1),
+			)
 		}
 		if len(n.Children) > 0 && n.Leaf {
 			panic("Node is a leaf - but has children")
@@ -218,9 +223,21 @@ func (T *BTree) delete(x *Node, key int) {
 				x.Keys = slices.Delete(x.Keys, i, i+1)
 				return
 			}
-			// panic("internal node: not yet implemented")
-			// found the key
-			return
+			// otherwise it's an internal node
+
+			// case 2a; steal from predecessor
+			if leaf, j := T.predecessor(x, i); len(leaf.Keys) >= T.n {
+				// ... then we take that leaf and put it here
+				x.Keys[i] = leaf.popKey(j)
+				return
+			}
+			// case 2b: steal from successor
+			if leaf, j := T.successor(x, i); len(leaf.Keys) >= T.n {
+				x.Keys[j] = leaf.popKey(j)
+				return
+			}
+
+			panic("case 2c: not implemented")
 		}
 		if k > key {
 			// it's not here... we need to visit left child then
@@ -233,6 +250,25 @@ func (T *BTree) delete(x *Node, key int) {
 	// not found? then visit right child
 	right := T.read(x, len(x.Keys))
 	T.delete(right, key)
+}
+
+// merge the two children located next to key at index i. The result gets
+// merged into the left child. x loses a key, as well.
+func (T *BTree) merge(x *Node, i int) *Node {
+	y := x.Children[i]   // left child
+	z := x.Children[i+1] // right child
+	key := x.Keys[i]
+	x.Keys = slices.Delete(x.Keys, i, i+1)
+	x.Children = slices.Delete(x.Children, i+1, i+2) // remove z
+
+	y.Keys = append(y.Keys, key)
+	// y consumes z as well
+	y.Keys = append(y.Keys, z.Keys...)
+	if !y.Leaf {
+		y.Children = append(y.Children, z.Children...)
+	}
+
+	return y
 }
 
 // Find predecessor for key at index i on node x
@@ -343,6 +379,16 @@ type Node struct {
 	Leaf     bool
 	Keys     []int
 	Children []*Node
+}
+
+// removes and returns the key at index i. It panics if the node is not a leaf
+func (n *Node) popKey(i int) int {
+	if !n.Leaf {
+		panic("popKey: Node is not a leaf")
+	}
+	key := n.Keys[i]
+	n.Keys = slices.Delete(n.Keys, i, i+1)
+	return key
 }
 
 // Index of first element that is smaller than key.

@@ -211,6 +211,23 @@ func TestPredecessorSuccessor(t *testing.T) {
 	}
 }
 
+func TestMerge(t *testing.T) {
+	cases := []struct {
+		input string
+		index int
+		want  string
+	}{
+		{input: "(25(1)(4)(6))", index: 0, want: "(5(124)(6))"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			tree := FromString(2, tc.input, os.Stderr)
+			tree.merge(tree.Root, tc.index)
+			expectTree(t, tree, tc.want)
+		})
+	}
+}
+
 func TestDelete(t *testing.T) {
 	cases := []struct {
 		input string
@@ -219,7 +236,9 @@ func TestDelete(t *testing.T) {
 	}{
 		{input: "(123)", key: 2, want: "(13)"},
 		{input: "(2(1)(34))", key: 4, want: "(2(1)(3))"},
-		{input: "(3(12)(45))", key: 3, want: "(2(1)(45)"}, // case 2a
+		{input: "(3(12)(45))", key: 3, want: "(2(1)(45))"}, // case 2a
+		{input: "(3(1)(45))", key: 3, want: "(4(1)(5))"},   // case 2b
+		{input: "(25(1)(4)(6))", key: 2, want: "(5(14)(6))"},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.key), func(t *testing.T) {
