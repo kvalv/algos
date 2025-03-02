@@ -43,7 +43,7 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	var root *Node
 	pop := func() {
 		if len(stack) == 0 {
-			return
+			panic("FromString: invalid input: too many parantheses")
 		}
 		if len(stack) == 1 {
 			root = stack[0]
@@ -62,9 +62,10 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	for _, c := range input {
 		switch c {
 		case '(':
-			tmp := &Node{}
+			tmp := &Node{Leaf: true}
 			p := top()
 			if p != nil {
+				p.Leaf = false
 				p.Children = append(p.Children, tmp)
 			}
 			stack = append(stack, tmp)
@@ -76,8 +77,12 @@ func FromString(n int, input string, w io.Writer) *BTree {
 			tmp.Keys = append(tmp.Keys, digit)
 		}
 	}
+	if len(stack) > 0 {
+		panic("FromString: invalid input: unclosed parantheses")
+	}
 
 	T.Root = root
+	T.validate()
 	return T
 }
 
@@ -85,6 +90,7 @@ func New(n int, w io.Writer) *BTree {
 	b := &BTree{
 		n:   n,
 		log: NewLogger(w),
+		dbg: true,
 	}
 	x := b.allocate()
 	x.Leaf = true
@@ -111,13 +117,24 @@ func (T *BTree) write(n *Node) *Node {
 	return n
 }
 
-func (T *BTree) validateTree() {
+// validate is used to check whether the tree upholds B-tree properties. If not, it panics.
+// Primarily used during testing to catch early errors
+func (T *BTree) validate() {
+	if !T.dbg {
+		return
+	}
 	T.WalkNodes(T.Root, func(n *Node) {
 		if len(n.Keys) > 2*T.n-1 {
 			panic(fmt.Sprintf("node %s has %d keys", n, len(n.Keys)))
 		}
 		if !n.Leaf && len(n.Keys)+1 != len(n.Children) {
 			panic(fmt.Sprintf("node %s has %d keys but %d children", n, len(n.Keys), len(n.Children)))
+		}
+		if len(n.Children) > 0 && n.Leaf {
+			panic("Node is a leaf - but has children")
+		}
+		if len(n.Children) == 0 && !n.Leaf {
+			panic("Node is not a leaf, but has children")
 		}
 	})
 }
@@ -153,20 +170,18 @@ func (T *BTree) SplitChild(x *Node, i int) int {
 	T.write(x)
 	T.write(y)
 	T.write(z)
-	if T.dbg {
-		if !y.Leaf {
-			if len(y.Keys)+1 != len(y.Children) {
-				panic(fmt.Sprintf("y has %d keys but %d children keys=%v children=%v", len(y.Keys), len(y.Children), y.Keys, y.Children))
-			}
-			if len(z.Keys)+1 != len(z.Children) {
-				panic(fmt.Sprintf("z has %d keys but %d children", len(z.Keys), len(z.Children)))
-			}
+	if !y.Leaf {
+		if len(y.Keys)+1 != len(y.Children) {
+			panic(fmt.Sprintf("y has %d keys but %d children keys=%v children=%v", len(y.Keys), len(y.Children), y.Keys, y.Children))
 		}
-		if len(x.Keys)+1 != len(x.Children) {
-			panic(fmt.Sprintf("x has %d keys but %d children", len(x.Keys), len(x.Children)))
+		if len(z.Keys)+1 != len(z.Children) {
+			panic(fmt.Sprintf("z has %d keys but %d children", len(z.Keys), len(z.Children)))
 		}
-		T.validateTree()
 	}
+	if len(x.Keys)+1 != len(x.Children) {
+		panic(fmt.Sprintf("x has %d keys but %d children", len(x.Keys), len(x.Children)))
+	}
+	T.validate()
 
 	return key
 }
@@ -180,7 +195,63 @@ func (T *BTree) Insert(key int) {
 		x = T.splitRoot()
 	}
 	T.insertNonFull(x, key)
+	T.validate()
+}
 
+func (T *BTree) Delete(key int) {
+	T.delete(T.Root, key)
+	T.validate()
+}
+
+func (T *BTree) delete(x *Node, key int) {
+	// case 1: leaf node
+	// case 2a) left child has enough keys -> find predecessor of key and remove it from leaf, put it in place of the key
+	// case 2b) right child has enough keys -> find successor of key and remove it from leaf, put it in place of the key
+
+	// case 1
+	if x == nil {
+		panic("node is nil")
+	}
+	for i, k := range x.Keys {
+		if k == key {
+			if x.Leaf {
+				x.Keys = slices.Delete(x.Keys, i, i+1)
+				return
+			}
+			// panic("internal node: not yet implemented")
+			// found the key
+			return
+		}
+		if k > key {
+			// it's not here... we need to visit left child then
+			T.log.Info("visitng child")
+			left := T.read(x, i)
+			T.delete(left, key)
+			return
+		}
+	}
+	// not found? then visit right child
+	right := T.read(x, len(x.Keys))
+	T.delete(right, key)
+}
+
+// Find predecessor for key at index i on node x
+func (T *BTree) predecessor(x *Node, i int) (*Node, int) {
+	c := x.Children[i]
+	for !c.Leaf && len(c.Children) > 0 {
+		n := len(c.Keys)
+		c = c.Children[n]
+	}
+	T.log.Info("predecessor: found child", "node", c, "len(c.Keys)", len(c.Keys))
+	return c, len(c.Keys) - 1
+}
+
+func (T *BTree) successor(x *Node, i int) (*Node, int) {
+	c := x.Children[i+1]
+	for !c.Leaf && len(c.Children) > 0 {
+		c = c.Children[0]
+	}
+	return c, 0
 }
 
 // assume non-full when this method is called.

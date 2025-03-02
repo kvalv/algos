@@ -182,7 +182,94 @@ func TestInsert(t *testing.T) {
 
 		})
 	}
+}
 
+func TestPredecessorSuccessor(t *testing.T) {
+	cases := []struct {
+		input string
+		index int // index in root that we want to find predecessor for
+		pred  int // key of successor
+		succ  int // key of scucessor
+	}{
+		{input: "(14(0)(23)(89))", index: 1, pred: 3, succ: 8},
+		{input: "(4(2(1)(3))(68(5)(7)(9)))", index: 0, pred: 3, succ: 5},
+		{input: "(P(CGM(AB)(DEF)(JKL)(NO))(TX(QRS)(UV)(YZ)))", index: 0, pred: 'O', succ: 'Q'},
+		{input: "(TX(QRS)(UV)(YZ))", index: 1, pred: 'V', succ: 'Y'},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.index), func(t *testing.T) {
+			tree := FromString(2, tc.input, os.Stderr)
+			if leaf, i := tree.predecessor(tree.Root, tc.index); leaf.Keys[i] != tc.pred {
+				got := leaf.Keys[i]
+				t.Fatalf("predecessor mismatch; want=%q, got=%q", tc.pred, got)
+			}
+			if leaf, i := tree.successor(tree.Root, tc.index); leaf.Keys[i] != tc.succ {
+				got := leaf.Keys[i]
+				t.Fatalf("successor mismatch; want=%d, got=%d", tc.succ, got)
+			}
+		})
+	}
+}
+
+func TestDelete(t *testing.T) {
+	cases := []struct {
+		input string
+		key   int
+		want  string
+	}{
+		{input: "(123)", key: 2, want: "(13)"},
+		{input: "(2(1)(34))", key: 4, want: "(2(1)(3))"},
+		{input: "(3(12)(45))", key: 3, want: "(2(1)(45)"}, // case 2a
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.key), func(t *testing.T) {
+			tree := FromString(2, tc.input, os.Stderr)
+			// Graphviz(tree, "/tmp/xxyy.png")
+			tree.Delete(tc.key)
+			expectTree(t, tree, tc.want)
+		})
+	}
+
+	// we apply these operations in sequence. Figure 18.8 in Cormen, p. 514
+	// t.Run("Cormen", func(t *testing.T) {
+	// 	cases := []struct {
+	// 		desc string
+	// 		key  int
+	// 		want string
+	// 	}{
+	// 		{
+	// 			desc: "F deleted: case 1",
+	// 			key:  'F',
+	// 			want: "(P(CGM(AB)(DE)(JKL)(NO))(TX(QRS)(UV)(YZ)))",
+	// 		},
+	// 		{
+	// 			desc: "M deleted: case 2a",
+	// 			key:  'M',
+	// 		},
+	// 		{
+	// 			desc: "G deleted: case 2c",
+	// 			key:  'G',
+	// 		},
+	// 		{
+	// 			desc: "D deleted: case 3b",
+	// 			key:  'D',
+	// 		},
+	// 		{
+	// 			desc: "B deleted: case 3a",
+	// 			key:  'B',
+	// 		},
+	// 	}
+	// 	tree := FromString(3, "(P(CGM(AB)(DEF)(JKL)(NO))(TX(QRS)(UV)(YZ)))", os.Stderr)
+	// 	for _, tc := range cases {
+	// 		if tc.want == "" {
+	// 			t.Skip()
+	// 		}
+	// 		t.Run(tc.desc, func(t *testing.T) {
+	// 			tree.Delete(tc.key)
+	// 			expectTree(t, tree, tc.want)
+	// 		})
+	// 	}
+	// })
 }
 
 func expectTree(t *testing.T, got *BTree, want string) {
