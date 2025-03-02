@@ -217,41 +217,51 @@ func (T *BTree) delete(x *Node, key int) {
 	if x == nil {
 		panic("node is nil")
 	}
-	// x.indexFor(key)
-	for i, k := range x.Keys {
-		if k == key {
-			if x.Leaf {
-				x.Keys = slices.Delete(x.Keys, i, i+1)
-				return
-			}
-			// otherwise it's an internal node
 
-			// case 2a; steal from predecessor
-			if leaf, j := T.predecessor(x, i); len(leaf.Keys) >= T.n {
-				x.Keys[i] = leaf.popKey(j)
-				return
-			}
-			// case 2b: steal from successor
-			if leaf, j := T.successor(x, i); len(leaf.Keys) >= T.n {
-				x.Keys[j] = leaf.popKey(j)
-				return
-			}
-			// case 2c: merge and remove from left child
-			y := T.merge(x, i)
-			T.delete(y, key)
-			return
-		}
-		if k > key {
-			// it's not here... we need to visit left child then
-			T.log.Info("visitng child")
-			left := T.read(x, i)
-			T.delete(left, key)
-			return
+	var i, k int
+	for i, k = range x.Keys {
+		if k >= key {
+			break
 		}
 	}
-	// not found? then visit right child
-	right := T.read(x, len(x.Keys))
-	T.delete(right, key)
+
+	if k == key {
+		if x.Leaf {
+			// case 1: leaf
+			x.Keys = slices.Delete(x.Keys, i, i+1)
+			return
+		}
+
+		if leaf, j := T.predecessor(x, i); len(leaf.Keys) >= T.n {
+			// case 2a; steal from predecessor
+			x.Keys[i] = leaf.popKey(j)
+		} else if leaf, j := T.successor(x, i); len(leaf.Keys) >= T.n {
+			// case 2b: steal from successor
+			x.Keys[j] = leaf.popKey(j)
+		} else {
+			// case 2c: merge into left child
+			y := T.merge(x, i)
+			T.delete(y, key)
+		}
+		return
+	}
+
+	// not found in this node, so we either go left or right
+	var c *Node
+	if key > k {
+		T.log.Info("key > k", "key", key, "k", k)
+		c = x.Children[len(x.Keys)] // last child
+	} else {
+		T.log.Info("key < k", "key", key, "k", k)
+		c = x.Children[i]
+	}
+
+	T.log.Info("child", "child", c)
+	if T.starving(c) {
+		panic("TODO: give me food")
+	}
+	T.delete(c, key)
+
 }
 
 // merge the two children located next to key at index i. The result gets
