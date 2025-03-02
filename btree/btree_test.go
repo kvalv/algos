@@ -2,6 +2,7 @@ package btree
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"testing"
 )
@@ -24,7 +25,7 @@ func TestSearch(t *testing.T) {
 
 	M := Node{Keys: []int{char('M')}, Children: []*Node{&DH, &QTX}}
 
-	btree := New(&M, os.Stderr)
+	btree := NewWithRoot(2, &M, os.Stderr)
 
 	cases := []struct {
 		key   rune
@@ -70,7 +71,7 @@ func TestKeys(t *testing.T) {
 
 	M := Node{Keys: []int{char('M')}, Children: []*Node{&DH, &QTX}}
 
-	btree := New(&M, os.Stderr)
+	btree := NewWithRoot(2, &M, os.Stderr)
 	got := btree.Keys()
 
 	var want []int
@@ -89,30 +90,105 @@ func TestKeys(t *testing.T) {
 }
 
 func TestSplit(t *testing.T) {
-	// t=2 is the simplest type, then t-1 to 2t-1 keys -> 1 to 3 keys -> 2 to 4 children. It is full if 4 children
-
 	right := &Node{
 		Keys: []int{5, 6, 7},
+		Leaf: true,
 	}
 	left := &Node{
 		Keys: []int{1, 2},
+		Leaf: true,
 	}
 	root := &Node{
 		Keys:     []int{3},
 		Children: []*Node{left, right},
 	}
-	tree := New(root, os.Stderr)
+	tree := NewWithRoot(2, root, os.Stderr)
 
-	if want, got := "(3(12)(567))", tree.String(root); want != got {
-		t.Fatalf("unexpected tree structure;\nwant= %s\ngot = %s", want, got)
+	expectTree(t, tree, "(3(12)(567))")
+	tree.SplitChild(root, 1)
+	expectTree(t, tree, "(36(12)(5)(7))")
+}
+
+func TestSplitRoot(t *testing.T) {
+	cases := []struct {
+		keys []int
+		want string
+	}{
+		{keys: []int{1, 2, 3}, want: "(2(1)(3))"},
+		{keys: []int{1, 2, 3, 4}, want: "(3(12)(4))"},
+		{keys: []int{1, 2, 3, 4, 5}, want: "(3(12)(45))"},
+		{keys: []int{2, 2, 2}, want: "(2(2)(2))"},
 	}
 
-	tree.SplitChild(root, 1) //
-	want := "(36(12)(5)(7))"
-	if got := tree.String(root); want != got {
-		t.Fatalf("unexpected tree structure;\nwant= %s\ngot = %s", want, got)
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%v", tc.keys), func(t *testing.T) {
+			root := &Node{Keys: tc.keys, Leaf: true}
+			tree := NewWithRoot(3, root, os.Stderr)
+			tree.dbg = true
+			tree.splitRoot()
+			expectTree(t, tree, tc.want)
+
+			tree2 := FromString(2, tc.want, io.Discard)
+			expectTree(t, tree2, tc.want)
+		})
+	}
+}
+
+func TestSplitRootV2(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: "(246(1)(3)(5)(78))",
+			want:  "(4(2(1)(3))(6(5)(78)))",
+		},
 	}
 
-	// want := "(36(12)(5)(7))"
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			tree := FromString(2, tc.input, os.Stderr)
+			tree.splitRoot()
+			Graphviz(tree, "/tmp/btreexx.png")
+			expectTree(t, tree, tc.want)
+		})
+	}
+}
 
+func TestInsert(t *testing.T) {
+	cases := []struct {
+		n    int
+		keys []int
+		want string
+	}{
+		{n: 2, keys: []int{1, 2, 3, 4}, want: "(2(1)(34))"},
+		{n: 2, keys: []int{1, 2, 3, 4, 5, 6, 7}, want: "(24(1)(3)(567))"},
+		{n: 2, keys: []int{1, 2, 3, 4, 5, 6, 7, 8}, want: "(246(1)(3)(5)(78))"},
+		{n: 2, keys: []int{1, 2, 3, 4, 5, 6, 7, 8, 9}, want: "(4(2(1)(3))(6(5)(789)))"},
+		{n: 2, keys: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, want: "(4(2(1)(3))(68(5)(7)(910)))"},
+	}
+
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%d", tc.n), func(t *testing.T) {
+			tree := New(tc.n, os.Stderr)
+			for _, key := range tc.keys {
+				tree.Insert(key)
+			}
+			// Graphviz(tree, "/tmp/xx.png")
+			expectTree(t, tree, tc.want)
+
+			tree2 := FromString(2, tc.want, io.Discard)
+			expectTree(t, tree2, tc.want)
+
+		})
+	}
+
+}
+
+func expectTree(t *testing.T, got *BTree, want string) {
+	t.Helper()
+	gotStr := got.String(got.Root)
+	if gotStr != want {
+		t.Fatalf("unexpected tree structure;\nwant= %s\ngot = %s", want, gotStr)
+	}
 }
