@@ -240,6 +240,9 @@ func TestDelete(t *testing.T) {
 		{input: "(3(1)(45))", key: 3, want: "(4(1)(5))"},     // case 2b
 		{input: "(25(1)(4)(6))", key: 2, want: "(5(14)(6))"}, // case 2c
 		{input: "(5(4)(678))", key: 4, want: "(6(5)(78))"},   // case 3a
+		{input: "(4(123)(5))", key: 5, want: "(3(12)(4))"},   // case 3b
+		{input: "(24(1)(3)(5))", key: 3, want: "(2(1)(45))"}, // case 3b
+		{input: "(2(1)(3))", key: 2, want: "(13)"},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.key), func(t *testing.T) {
@@ -251,45 +254,23 @@ func TestDelete(t *testing.T) {
 	}
 
 	// we apply these operations in sequence. Figure 18.8 in Cormen, p. 514
-	// t.Run("Cormen", func(t *testing.T) {
-	// 	cases := []struct {
-	// 		desc string
-	// 		key  int
-	// 		want string
-	// 	}{
-	// 		{
-	// 			desc: "F deleted: case 1",
-	// 			key:  'F',
-	// 			want: "(P(CGM(AB)(DE)(JKL)(NO))(TX(QRS)(UV)(YZ)))",
-	// 		},
-	// 		{
-	// 			desc: "M deleted: case 2a",
-	// 			key:  'M',
-	// 		},
-	// 		{
-	// 			desc: "G deleted: case 2c",
-	// 			key:  'G',
-	// 		},
-	// 		{
-	// 			desc: "D deleted: case 3b",
-	// 			key:  'D',
-	// 		},
-	// 		{
-	// 			desc: "B deleted: case 3a",
-	// 			key:  'B',
-	// 		},
-	// 	}
-	// 	tree := FromString(3, "(P(CGM(AB)(DEF)(JKL)(NO))(TX(QRS)(UV)(YZ)))", os.Stderr)
-	// 	for _, tc := range cases {
-	// 		if tc.want == "" {
-	// 			t.Skip()
-	// 		}
-	// 		t.Run(tc.desc, func(t *testing.T) {
-	// 			tree.Delete(tc.key)
-	// 			expectTree(t, tree, tc.want)
-	// 		})
-	// 	}
-	// })
+	t.Run("Cormen", func(t *testing.T) {
+		cases := []struct {
+			key  int
+			want string
+		}{
+			{key: 'F', want: "(P(CGM(AB)(DE)(JKL)(NO))(TX(QRS)(UV)(YZ)))"},
+			{key: 'M', want: "(P(CGL(AB)(DE)(JK)(NO))(TX(QRS)(UV)(YZ)))"},
+			{key: 'G', want: "(P(CL(AB)(DEJK)(NO))(TX(QRS)(UV)(YZ)))"},
+			{key: 'D', want: "(CLPTX(AB)(EJK)(NO)(QRS)(UV)(YZ))"},
+			{key: 'B', want: "(ELPTX(AC)(JK)(NO)(QRS)(UV)(YZ))"},
+		}
+		tree := FromString(3, "(P(CGM(AB)(DEF)(JKL)(NO))(TX(QRS)(UV)(YZ)))", os.Stderr)
+		for _, tc := range cases {
+			tree.Delete(tc.key)
+			expectTree(t, tree, tc.want)
+		}
+	})
 }
 
 func expectTree(t *testing.T, got *BTree, want string) {

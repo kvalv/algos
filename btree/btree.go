@@ -104,9 +104,11 @@ func (T *BTree) allocate() *Node {
 	return &Node{}
 }
 func (T *BTree) read(n *Node, i int) *Node {
+	if len(n.Children) < i-1 || i < 0 {
+		return nil
+	}
 	c := n.Children[i]
-	_, med := n.median()
-	T.log.Debug("Disk read", "node", keyString(med))
+	T.log.Debug("Disk read", "node", c.String())
 	T.stats.Reads++
 	return c
 }
@@ -153,13 +155,6 @@ func (T *BTree) SplitChild(x *Node, i int) int {
 
 	medianIndex := len(y.Keys) / 2
 	key := y.Keys[medianIndex]
-	T.log.Info(
-		"splitChild",
-		"y", y,
-		"medianKey", key,
-		"children", y.Children,
-		"leaf", y.Leaf,
-	)
 	z.Keys = y.Keys[medianIndex+1:]
 	if !y.Leaf && len(y.Children) > 0 {
 		z.Children = y.Children[medianIndex+1:]
@@ -168,7 +163,6 @@ func (T *BTree) SplitChild(x *Node, i int) int {
 
 	y.Keys = y.Keys[:medianIndex]
 
-	T.log.Info("x.keys.i", "keys", x.Keys, "i", i)
 	x.Keys = slices.Insert(x.Keys, i, key)
 	x.Children = slices.Insert(x.Children, i+1, z)
 
@@ -209,11 +203,6 @@ func (T *BTree) Delete(key int) {
 }
 
 func (T *BTree) delete(x *Node, key int) {
-	// case 1: leaf node
-	// case 2a) left child has enough keys -> find predecessor of key and remove it from leaf, put it in place of the key
-	// case 2b) right child has enough keys -> find successor of key and remove it from leaf, put it in place of the key
-
-	// case 1
 	if x == nil {
 		panic("node is nil")
 	}
@@ -249,16 +238,41 @@ func (T *BTree) delete(x *Node, key int) {
 	// not found in this node, so we either go left or right
 	var c *Node
 	if key > k {
-		T.log.Info("key > k", "key", key, "k", k)
-		c = x.Children[len(x.Keys)] // last child
+		c = T.read(x, len(x.Keys)) // last child
 	} else {
-		T.log.Info("key < k", "key", key, "k", k)
-		c = x.Children[i]
+		c = T.read(x, i)
 	}
 
-	T.log.Info("child", "child", c)
 	if T.starving(c) {
-		panic("TODO: give me food")
+		var left, right *Node
+		var takenkey int // sibling's key that we've taken
+		var child *Node  // sibling's child
+
+		// case 3a
+		if right = T.read(x, i+1); right != nil && !T.starving(right) {
+			// take leftmost child from right sibling. Move key over to x,
+			// and x yields a key down to the child. The sibling child gets
+			// adopted by c.
+			takenkey, child = right.popKeyLeft(0)
+		} else if left = T.read(x, i); left != nil && !T.starving(left) {
+			takenkey, child = left.popKeyRight(len(left.Keys) - 1)
+		} else {
+			// case 3b
+			// both siblings are starving; merge one of them, and carry on
+			if !(left != nil && T.starving(left) && right != nil && T.starving(right)) {
+				panic("Expected both siblings to starve")
+			}
+			T.merge(x, i) // merge with right, so c is still the same
+			T.delete(c, key)
+			return
+			// T.delete(c,
+		}
+		keyToChild := x.swap(i, takenkey)
+		j := c.indexFor(keyToChild)
+		c.Keys = slices.Insert(c.Keys, j, keyToChild)
+		if !c.Leaf {
+			c.Children = slices.Insert(c.Children, j, child)
+		}
 	}
 	T.delete(c, key)
 
@@ -267,8 +281,8 @@ func (T *BTree) delete(x *Node, key int) {
 // merge the two children located next to key at index i. The result gets
 // merged into the left child. x loses a key, as well.
 func (T *BTree) merge(x *Node, i int) *Node {
-	y := x.Children[i]   // left child
-	z := x.Children[i+1] // right child
+	y := T.read(x, i)   // left child
+	z := T.read(x, i+1) // right child
 	key := x.Keys[i]
 	x.Keys = slices.Delete(x.Keys, i, i+1)
 	x.Children = slices.Delete(x.Children, i+1, i+2) // remove z
@@ -278,6 +292,11 @@ func (T *BTree) merge(x *Node, i int) *Node {
 	y.Keys = append(y.Keys, z.Keys...)
 	if !y.Leaf {
 		y.Children = append(y.Children, z.Children...)
+	}
+
+	if len(x.Keys) == 0 {
+		// Congrats, new root
+		T.Root = y
 	}
 
 	return y
@@ -290,7 +309,6 @@ func (T *BTree) predecessor(x *Node, i int) (*Node, int) {
 		n := len(c.Keys)
 		c = c.Children[n]
 	}
-	T.log.Info("predecessor: found child", "node", c, "len(c.Keys)", len(c.Keys))
 	return c, len(c.Keys) - 1
 }
 
@@ -402,6 +420,31 @@ func (n *Node) popKey(i int) int {
 	n.Keys = slices.Delete(n.Keys, i, i+1)
 	return key
 }
+func (n *Node) popKeyLeft(i int) (key int, child *Node) {
+	key = n.Keys[i]
+	n.Keys = slices.Delete(n.Keys, i, i+1)
+	if !n.Leaf {
+		child = n.Children[i]
+		n.Children = slices.Delete(n.Children, i, i+1)
+	}
+	return
+}
+func (n *Node) popKeyRight(i int) (key int, child *Node) {
+	key = n.Keys[i]
+	n.Keys = slices.Delete(n.Keys, i, i+1)
+	if !n.Leaf {
+		child = n.Children[i+1]
+		n.Children = slices.Delete(n.Children, i+1, i+2)
+	}
+	return
+}
+
+// swap current key at index i with newKey, returning the replaced key
+func (n *Node) swap(i int, newKey int) (replaced int) {
+	replaced = n.Keys[i]
+	n.Keys[i] = newKey
+	return
+}
 
 // Index of first element that is smaller than key.
 // If key is greater than all elements, len(Node.Keys) is returned.
@@ -416,6 +459,9 @@ func (n *Node) indexFor(key int) int {
 }
 
 func (n *Node) String() string {
+	if n == nil {
+		return "nil"
+	}
 	var s strings.Builder
 	s.WriteString("(")
 	for _, k := range n.Keys {
