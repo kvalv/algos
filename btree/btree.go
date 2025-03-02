@@ -217,6 +217,7 @@ func (T *BTree) delete(x *Node, key int) {
 	if x == nil {
 		panic("node is nil")
 	}
+	// x.indexFor(key)
 	for i, k := range x.Keys {
 		if k == key {
 			if x.Leaf {
@@ -227,7 +228,6 @@ func (T *BTree) delete(x *Node, key int) {
 
 			// case 2a; steal from predecessor
 			if leaf, j := T.predecessor(x, i); len(leaf.Keys) >= T.n {
-				// ... then we take that leaf and put it here
 				x.Keys[i] = leaf.popKey(j)
 				return
 			}
@@ -236,8 +236,10 @@ func (T *BTree) delete(x *Node, key int) {
 				x.Keys[j] = leaf.popKey(j)
 				return
 			}
-
-			panic("case 2c: not implemented")
+			// case 2c: merge and remove from left child
+			y := T.merge(x, i)
+			T.delete(y, key)
+			return
 		}
 		if k > key {
 			// it's not here... we need to visit left child then
