@@ -1,6 +1,9 @@
 package page
 
+import "io"
+
 type Serde interface {
-	Bytes(h Header) []byte
+	io.Writer
+	// Bytes(h Header) []byte
 	FromBytes(any, []byte) error
 }
