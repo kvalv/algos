@@ -45,9 +45,19 @@ func TestFreeSlot(t *testing.T) {
 				b := fs.Reserve(1).WithDebugValue('b')
 				fs.Free(a)
 				fs.Free(b)
-				fs.Reserve(2).WithDebugValue('c')
+				fs.Reserve(3).WithDebugValue('c')
 			},
-			want: "...cc",
+			want: "..ccc",
+		},
+		{
+			desc: "too big",
+			size: 5,
+			init: func(fs *FreeSlots) {
+				if fs.Reserve(6) != nil {
+					t.Fatal("expected nil")
+				}
+			},
+			want: ".....",
 		},
 	}
 	for _, tc := range cases {

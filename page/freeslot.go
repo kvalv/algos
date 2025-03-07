@@ -118,6 +118,12 @@ func (f *FreeSlots) Free(sl *slot) {
 			}
 			return 0
 		})
+		for i := 0; i < len(f.slots)-1; i++ {
+			if f.slots[i].End().AdjacentTo(f.slots[i+1].p) {
+				f.slots[i].size += f.slots[i+1].size
+				f.slots = slices.Delete(f.slots, i+1, i+2)
+			}
+		}
 
 		return
 	}
