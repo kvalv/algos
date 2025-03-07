@@ -35,7 +35,19 @@ func TestFreeSlot(t *testing.T) {
 				fs.Free(a)
 				fs.Reserve(2).WithDebugValue('c')
 			},
-			want: "bb.cc",
+			want: ".b.cc",
+		},
+		{
+			desc: "reserve and fragment",
+			size: 5,
+			init: func(fs *FreeSlots) {
+				a := fs.Reserve(1).WithDebugValue('a')
+				b := fs.Reserve(1).WithDebugValue('b')
+				fs.Free(a)
+				fs.Free(b)
+				fs.Reserve(2).WithDebugValue('c')
+			},
+			want: "...cc",
 		},
 	}
 	for _, tc := range cases {

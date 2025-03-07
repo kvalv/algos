@@ -13,7 +13,14 @@ type slot struct {
 }
 
 func (s *slot) String() string {
-	return fmt.Sprintf("<slot p=%d size=%d>", s.p, s.size)
+	if s == nil {
+		return "<nil>"
+	}
+	tmp := ""
+	if s.debugValue != 0 {
+		tmp = fmt.Sprintf(" debug=%c", s.debugValue)
+	}
+	return fmt.Sprintf("<slot p=%d size=%d%s>", s.p, s.size, tmp)
 }
 
 func (s *slot) WithDebugValue(v byte) *slot {
@@ -77,7 +84,6 @@ func (f *FreeSlots) Reserve(size CellSize) *slot {
 	}
 	// ...
 	if res != nil {
-		fmt.Printf("adding to yielded %s\n", res)
 		f.yielded = append(f.yielded, res)
 	}
 
@@ -90,8 +96,34 @@ func (f *FreeSlots) Free(sl *slot) {
 	p := sl.p
 	size := sl.size
 
+	if true {
+		for i, sl := range f.yielded {
+			if sl.p == p && sl.size == size {
+				f.yielded = slices.Delete(f.yielded, i, i+1)
+				break
+			}
+		}
+		// take back from yielded
+		fmt.Printf("Free: got new slot %s\n", sl)
+		// sl.debugValue = 0
+		newSlot := slot{p: p, size: size}
+
+		f.slots = append(f.slots, newSlot)
+		slices.SortFunc(f.slots, func(i, j slot) int {
+			if i.p < j.p {
+				return -1
+			}
+			if i.p > j.p {
+				return 1
+			}
+			return 0
+		})
+
+		return
+	}
+
 	for i, slot := range f.slots {
-		if p > slot.p {
+		if p >= slot.p {
 			if slot.AdjacentTo(p) {
 				slot.size += size
 				if i+1 < len(f.slots)-1 {
@@ -114,7 +146,6 @@ func (f *FreeSlots) String() string {
 		b[i] = '.'
 	}
 	for _, s := range f.slots {
-		fmt.Printf("visiting slot %d %d\n", s.p, s.size)
 		for j := 0; j < int(s.size); j++ {
 			i := int(s.p)
 			if s.debugValue != 0 {
@@ -125,7 +156,6 @@ func (f *FreeSlots) String() string {
 		}
 	}
 	for _, s := range f.yielded {
-		fmt.Printf("visiting yielded slot %d %d\n", s.p, s.size)
 		for j := 0; j < int(s.size); j++ {
 			i := int(s.p)
 			if s.debugValue != 0 {
@@ -135,6 +165,5 @@ func (f *FreeSlots) String() string {
 			}
 		}
 	}
-	fmt.Printf("b=%q\n", string(b))
 	return string(b)
 }
