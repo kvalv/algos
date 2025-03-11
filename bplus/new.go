@@ -1,6 +1,8 @@
 package bplus
 
-import "io"
+import (
+	"io"
+)
 
 func New(n int, w io.Writer) *BTree {
 	b := &BTree{
@@ -68,5 +70,17 @@ func FromString(n int, input string, w io.Writer) *BTree {
 
 	T.Root = root
 	T.validate()
+
+	// Add next child
+	var prev *Node
+	T.WalkNodes(T.Root, func(n *Node) {
+		if n.Leaf {
+			if prev != nil {
+				prev.RightSibling = n
+			}
+			prev = n
+		}
+	})
+
 	return T
 }

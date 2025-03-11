@@ -50,15 +50,6 @@ func (T *BTree) write(n *Node) *Node {
 	T.log.Debug("Disk write", "node", keyString(med))
 	return n
 }
-func (n *Node) median() (index int, key int) {
-	if len(n.Keys) == 0 {
-		return 0, 0
-	}
-
-	index = len(n.Keys) / 2
-	key = n.Keys[index]
-	return
-}
 func (T *BTree) allocate() *Node {
 	T.log.Debug("Allocate-Node")
 	return &Node{}
@@ -96,21 +87,78 @@ func (b *BTree) Keys() []int {
 	})
 	return res
 }
-
-type Node struct {
-	Keys []int
-	Leaf bool
-
-	// leaf: has N-1 keys and N pointers
-	// For leaf, the last pointer points to sibling node (next) - not back
-	Children []*Node // ??
-	Pointers []PageID
+func (T *BTree) insertionIndex(node *Node, key int) *int {
+	if len(node.Keys) == 0 || key > node.Keys[len(node.Keys)-1] {
+		return nil
+	}
+	// otherwise we knwo for sure there's at least one key that is greater
+	for i, k := range node.Keys {
+		if k >= key {
+			return &i
+		}
+	}
+	panic("unreachable")
 }
 
-func (T *BTree) Find(key int) (*Node, int) {
+func (T *BTree) Find(key int) *Match {
 	C := T.Root
 	for !C.Leaf {
-		return C.Children[1], 1
+		fmt.Printf("node=%s\n", C)
+		i := T.insertionIndex(C, key)
+		if i == nil {
+			C = C.lastChild()
+			continue
+		}
+		fmt.Printf("C=%s i=%d\n", C, *i)
+		if C.Keys[*i] == key {
+			C = C.Children[*i+1]
+		} else {
+			C = C.Children[*i]
+		}
 	}
-	return nil, 0
+	// C is a leaf
+	i := T.insertionIndex(C, key)
+	if i == nil {
+		return nil
+	}
+	return &Match{C, *i}
+}
+
+func (T *BTree) Range(key, upper int) RangeIterator {
+	C := T.Root
+	for !C.Leaf {
+		i := T.insertionIndex(C, key)
+		if i == nil {
+			C = C.lastChild()
+			continue
+		}
+		if C.Keys[*i] == key {
+			C = C.Children[*i+1]
+		} else {
+			C = C.Children[*i]
+		}
+	}
+	i := T.insertionIndex(C, key)
+	if i == nil {
+		return NewEmptyIterator[Match]()
+	}
+
+	j := *i
+	return NewIterator(func() *Match {
+		m := Match{Index: j, Node: C}
+		if j >= len(C.Keys) {
+			if C.RightSibling == nil {
+				return nil
+			}
+			// otherwise visit next sibling
+			C = C.RightSibling
+			j = 0
+			m = Match{Index: j, Node: C}
+		}
+		if C.Keys[j] >= upper {
+			return nil
+		}
+		j++
+		return &m
+	})
 }
