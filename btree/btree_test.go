@@ -210,6 +210,8 @@ func TestPredecessorSuccessor(t *testing.T) {
 		})
 	}
 }
+func XXFoo() {
+}
 
 func TestMerge(t *testing.T) {
 	cases := []struct {
