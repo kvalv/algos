@@ -24,9 +24,11 @@ func (T *BTree) String(n *Node) string {
 	for _, k := range n.Keys {
 		s.WriteString(keyString(k))
 	}
-	for i := range n.Children {
-		c := T.read(n, i)
-		fmt.Fprintf(&s, "%s", T.String(c))
+	if !n.Leaf { // I think we're using .Children for pointers, too...
+		for i := range n.Children {
+			c := T.read(n, i)
+			fmt.Fprintf(&s, "%s", T.String(c))
+		}
 	}
 	s.WriteString(")")
 

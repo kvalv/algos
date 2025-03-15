@@ -3,6 +3,7 @@ package bplus
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 )
 
 type BTree struct {
@@ -85,6 +86,9 @@ func (b *BTree) Keys() []int {
 	})
 	return res
 }
+
+// returns nil if node does not have any keys, or the key is greater
+// than all keys in this set, in which case - consider calling T.lastChild
 func (T *BTree) insertionIndex(node *Node, key int) *int {
 	if len(node.Keys) == 0 || key > node.Keys[len(node.Keys)-1] {
 		return nil
@@ -173,5 +177,25 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 }
 
 func (T *BTree) Insert(key int, value PageID) {
+	node := T.Root
 
+	for !node.Leaf {
+		if i := T.insertionIndex(node, key); i != nil {
+			node = T.read(node, *i)
+		} else {
+			node = T.lastChild(node)
+		}
+	}
+
+	// now we are at the leaf, and we can insert...
+	i := T.insertionIndex(node, key)
+	if i == nil {
+		node.Keys = append(node.Keys, key)
+		node.Children = append(node.Children, value)
+	} else {
+		node.Keys = slices.Insert(node.Keys, *i, key)
+		node.Children = slices.Insert(node.Children, *i, value)
+	}
+
+	// split step ... if
 }

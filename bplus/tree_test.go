@@ -119,11 +119,11 @@ func TestInsert(t *testing.T) {
 			key:   'c',
 			want:  "(abc)",
 		},
-		// {
-		// 	input: "(bcd)",
-		// 	key:   'a',
-		// 	want:  "(c(ab)(cd))",
-		// },
+		{
+			input: "(bcd)",
+			key:   'a',
+			want:  "(c(ab)(cd))",
+		},
 	}
 
 	for _, tc := range cases {
