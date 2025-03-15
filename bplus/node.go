@@ -1,6 +1,7 @@
 package bplus
 
 type Node struct {
+	PageID
 	Keys []int
 	Leaf bool
 
@@ -8,16 +9,8 @@ type Node struct {
 
 	// leaf: has N-1 keys and N pointers
 	// For leaf, the last pointer points to sibling node (next) - not back
-	Children []*Node // ??
+	Children []PageID // ??
 	Pointers []PageID
-}
-
-func (N *Node) lastChild() *Node {
-	length := len(N.Children)
-	if length == 0 {
-		return nil
-	}
-	return N.Children[length-1]
 }
 
 func (n *Node) median() (index int, key int) {

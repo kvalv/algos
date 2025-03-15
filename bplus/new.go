@@ -5,10 +5,12 @@ import (
 )
 
 func New(n int, w io.Writer) *BTree {
+	log := NewLogger(w)
 	b := &BTree{
 		n:   n,
-		log: NewLogger(w),
+		log: log,
 		dbg: true,
+		pc:  NewPageCache(log),
 	}
 	x := b.allocate()
 	x.Leaf = true
@@ -49,11 +51,12 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	for _, c := range input {
 		switch c {
 		case '(':
-			tmp := &Node{Leaf: true}
+			tmp := T.pc.Allocate()
+			tmp.Leaf = true
 			p := top()
 			if p != nil {
 				p.Leaf = false
-				p.Children = append(p.Children, tmp)
+				p.Children = append(p.Children, tmp.PageID)
 			}
 			stack = append(stack, tmp)
 		case ')':

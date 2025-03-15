@@ -7,10 +7,11 @@ import (
 
 type BTree struct {
 	// t = n - 1
-	n    int // n pointers, n-1 keys
-	log  *slog.Logger
-	dbg  bool
-	Root *Node
+	n         int // n pointers, n-1 keys
+	log       *slog.Logger
+	dbg       bool
+	Root      *Node
+	pageCache *PageCache
 }
 
 func (T *BTree) validate() {
@@ -41,18 +42,14 @@ func (T *BTree) read(n *Node, i int) *Node {
 	if len(n.Children) < i-1 || i < 0 {
 		return nil
 	}
-	c := n.Children[i]
-	T.log.Debug("Disk read", "node", c.String())
-	return c
+	id := n.Children[i]
+	return T.pageCache.Read(id)
 }
 func (T *BTree) write(n *Node) *Node {
-	_, med := n.median()
-	T.log.Debug("Disk write", "node", keyString(med))
-	return n
+	return T.pageCache.Write(n)
 }
 func (T *BTree) allocate() *Node {
-	T.log.Debug("Allocate-Node")
-	return &Node{}
+	return T.pageCache.Allocate()
 }
 
 func (T *BTree) WalkNodes(n *Node, f func(n *Node)) {
@@ -60,7 +57,8 @@ func (T *BTree) WalkNodes(n *Node, f func(n *Node)) {
 		return
 	}
 	f(n)
-	for _, c := range n.Children {
+	for _, id := range n.Children {
+		c := T.pageCache.Read(id)
 		T.WalkNodes(c, f)
 	}
 }
@@ -100,23 +98,34 @@ func (T *BTree) insertionIndex(node *Node, key int) *int {
 	panic("unreachable")
 }
 
+func (T *BTree) lastChild(N *Node) *Node {
+	length := len(N.Children)
+	if length == 0 {
+		return nil
+	}
+	pageID := N.Children[length-1]
+	return T.pageCache.Read(pageID)
+}
+
 func (T *BTree) Find(key int) *Match {
 	C := T.Root
+	var count int
 	for !C.Leaf {
-		fmt.Printf("node=%s\n", C)
+		count++
+		if count > 100 {
+			panic("infinite loop")
+		}
 		i := T.insertionIndex(C, key)
 		if i == nil {
-			C = C.lastChild()
+			C = T.lastChild(C)
 			continue
 		}
-		fmt.Printf("C=%s i=%d\n", C, *i)
 		if C.Keys[*i] == key {
-			C = C.Children[*i+1]
+			C = T.read(C, *i+1)
 		} else {
-			C = C.Children[*i]
+			C = T.read(C, *i)
 		}
 	}
-	// C is a leaf
 	i := T.insertionIndex(C, key)
 	if i == nil {
 		return nil
@@ -129,13 +138,13 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 	for !C.Leaf {
 		i := T.insertionIndex(C, key)
 		if i == nil {
-			C = C.lastChild()
+			C = T.lastChild(C)
 			continue
 		}
 		if C.Keys[*i] == key {
-			C = C.Children[*i+1]
+			C = T.read(C, *i+1)
 		} else {
-			C = C.Children[*i]
+			C = T.read(C, *i)
 		}
 	}
 	i := T.insertionIndex(C, key)
