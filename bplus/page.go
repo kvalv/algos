@@ -5,7 +5,7 @@ import (
 	"log/slog"
 )
 
-type PageID = int
+type PageID int
 
 type statistics struct {
 	Reads  int
@@ -53,7 +53,7 @@ func (pc *PageCache) Write(n *Node) *Node {
 func (pc *PageCache) Allocate() *Node {
 	pc.log.Debug("Allocate-Node")
 	n := &Node{
-		PageID: len(pc.nodes),
+		PageID: PageID(len(pc.nodes)),
 	}
 	pc.nodes = append(pc.nodes, n)
 	return n

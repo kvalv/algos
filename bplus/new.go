@@ -78,7 +78,8 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	var prev *Node
 	T.WalkNodes(T.Root, func(n *Node) {
 		if n.Leaf {
-			n.Pointers = append(n.Pointers, n.Keys...) // set values
+			pointers := make([]PageID, len(n.Keys))
+			n.Pointers = pointers
 			if prev != nil {
 				tmp := n.PageID
 				prev.RightSibling = &tmp

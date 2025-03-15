@@ -89,7 +89,7 @@ func (b *BTree) Keys() []int {
 
 // returns nil if node does not have any keys, or the key is greater
 // than all keys in this set, in which case - consider calling T.lastChild
-func (T *BTree) insertionIndex(node *Node, key int) *int {
+func (T *BTree) insertionIndex(key int, node *Node) *int {
 	if len(node.Keys) == 0 || key > node.Keys[len(node.Keys)-1] {
 		return nil
 	}
@@ -119,7 +119,7 @@ func (T *BTree) Find(key int) *Match {
 		if count > 100 {
 			panic("infinite loop")
 		}
-		i := T.insertionIndex(C, key)
+		i := T.insertionIndex(key, C)
 		if i == nil {
 			C = T.lastChild(C)
 			continue
@@ -130,7 +130,7 @@ func (T *BTree) Find(key int) *Match {
 			C = T.read(C, *i)
 		}
 	}
-	i := T.insertionIndex(C, key)
+	i := T.insertionIndex(key, C)
 	if i == nil {
 		return nil
 	}
@@ -140,7 +140,7 @@ func (T *BTree) Find(key int) *Match {
 func (T *BTree) Range(key, upper int) RangeIterator {
 	C := T.Root
 	for !C.Leaf {
-		i := T.insertionIndex(C, key)
+		i := T.insertionIndex(key, C)
 		if i == nil {
 			C = T.lastChild(C)
 			continue
@@ -151,7 +151,7 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 			C = T.read(C, *i)
 		}
 	}
-	i := T.insertionIndex(C, key)
+	i := T.insertionIndex(key, C)
 	if i == nil {
 		return NewEmptyIterator[Match]()
 	}
@@ -179,10 +179,10 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 func (T *BTree) Insert(key int, value PageID) {
 	node := T.Root
 
-	var parent *Node
+	var stack []*Node
 	for !node.Leaf {
-		parent = node
-		if i := T.insertionIndex(node, key); i != nil {
+		stack = append(stack, node)
+		if i := T.insertionIndex(key, node); i != nil {
 			node = T.read(node, *i)
 		} else {
 			node = T.lastChild(node)
@@ -190,7 +190,7 @@ func (T *BTree) Insert(key int, value PageID) {
 	}
 
 	// now we are at the leaf, and we can insert...
-	i := T.insertionIndex(node, key)
+	i := T.insertionIndex(key, node)
 	if i == nil {
 		node.Keys = append(node.Keys, key)
 		node.Children = append(node.Pointers, value)
@@ -199,37 +199,72 @@ func (T *BTree) Insert(key int, value PageID) {
 		node.Children = slices.Insert(node.Pointers, *i, value)
 	}
 
-	// split step ... if
-	if len(node.Keys) <= T.n {
+	if !T.NeedsSplit(node) {
 		return // we're done!
 	}
 
 	// otherwise we need to split
 	j := (T.n + 1) / 2 // ceil[n/2]
-	right := T.SplitLeaf(node, j)
 
-	if parent == nil {
+	right := T.Split(node, j)
+
+	if len(stack) == 0 {
 		// create a new root
 		root := T.allocate()
 		root.Keys = []int{right.MinKey()}
 		root.Children = []PageID{node.PageID, right.PageID}
 		T.Root = root
-	} else {
-		panic("TODO: add key to existing parent")
+		return
 	}
 
+	// otherwise, insert into existing parent node. Keep doing that, until we're at the Root
+	// and need to split, or it's not necessary to split anymore
+
+	slices.Reverse(stack) // stack now consists of the following nodes+order: [parent, grandparent, ...]
+
+	pageID := right.PageID
+	minKey := right.MinKey()
+	for _, par := range stack {
+		// insert a given key and pageID into the parent node.
+		// We keep doing this while splitting is necessary
+		i := T.insertionIndex(key, par)
+		if i == nil {
+			par.Keys = append(par.Keys, minKey)
+			par.Children = append(par.Children, pageID) // seems about right
+		} else {
+			par.Keys = slices.Insert(par.Keys, *i, minKey)
+			par.Children = slices.Insert(par.Children, *i+1, pageID)
+		}
+
+		if !T.NeedsSplit(par) {
+			break
+		}
+		right := T.Split(par, (T.n+1)/2) //
+		pageID = par.PageID
+		minKey = right.MinKey()
+	}
+}
+
+func (T *BTree) NeedsSplit(n *Node) bool {
+	return T.n == len(n.Keys)-1
 }
 
 // Splits current node at index i, returning the new node, residing on the right side
-func (T *BTree) SplitLeaf(node *Node, i int) *Node {
+func (T *BTree) Split(node *Node, i int) *Node {
 	right := T.pageCache.Allocate()
 
-	right.Pointers = node.Pointers[i:]
 	right.Keys = node.Keys[i:]
-	right.RightSibling = node.RightSibling
-
-	node.Pointers = node.Pointers[:i]
 	node.Keys = node.Keys[:i]
+
+	if node.Leaf {
+		right.Pointers = node.Pointers[i:]
+		node.Pointers = node.Pointers[:i]
+	} else {
+		right.Children = node.Children[i:]
+		node.Children = node.Children[:i]
+	}
+
+	right.RightSibling = node.RightSibling
 	tmp := right.PageID
 	node.RightSibling = &tmp
 
