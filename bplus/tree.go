@@ -171,3 +171,7 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 		return &m
 	})
 }
+
+func (T *BTree) Insert(key int, value PageID) {
+
+}

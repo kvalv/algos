@@ -7,10 +7,10 @@ import (
 func New(n int, w io.Writer) *BTree {
 	log := NewLogger(w)
 	b := &BTree{
-		n:   n,
-		log: log,
-		dbg: true,
-		pc:  NewPageCache(log),
+		n:         n,
+		log:       log,
+		dbg:       true,
+		pageCache: NewPageCache(log),
 	}
 	x := b.allocate()
 	x.Leaf = true
@@ -51,7 +51,7 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	for _, c := range input {
 		switch c {
 		case '(':
-			tmp := T.pc.Allocate()
+			tmp := T.pageCache.Allocate()
 			tmp.Leaf = true
 			p := top()
 			if p != nil {

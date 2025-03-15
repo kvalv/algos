@@ -9,7 +9,7 @@ import (
 func TestFromString(t *testing.T) {
 	tree := FromString(2, "(2(1)(34))", os.Stderr)
 	want := "(2(1)(34))"
-	expectTree(t, tree, want)
+	expectTree(t, want, tree)
 }
 
 func TestFind(t *testing.T) {
@@ -108,6 +108,33 @@ func TestRange(t *testing.T) {
 	}
 }
 
+func TestInsert(t *testing.T) {
+	cases := []struct {
+		input string
+		key   int
+		want  string
+	}{
+		{
+			input: "(ab)",
+			key:   'c',
+			want:  "(abc)",
+		},
+		// {
+		// 	input: "(bcd)",
+		// 	key:   'a',
+		// 	want:  "(c(ab)(cd))",
+		// },
+	}
+
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.key), func(t *testing.T) {
+			tree := FromString(2, tc.input, os.Stderr)
+			tree.Insert(tc.key, 0)
+			expectTree(t, tc.want, tree)
+		})
+	}
+}
+
 func expectMatches(t *testing.T, want []string, got Iterator[Match]) {
 	t.Helper()
 	for i, w := range want {
@@ -140,7 +167,7 @@ func expectMatch(t *testing.T, want, got *Match) {
 	}
 }
 
-func expectTree(t *testing.T, got *BTree, want string) {
+func expectTree(t *testing.T, want string, got *BTree) {
 	t.Helper()
 	gotStr := got.String(got.Root)
 	if gotStr != want {

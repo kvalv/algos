@@ -4,9 +4,15 @@ import "log/slog"
 
 type PageID = int
 
+type statistics struct {
+	Reads  int
+	Writes int
+}
+
 type PageCache struct {
 	log   *slog.Logger
 	nodes []*Node
+	stats statistics
 }
 
 func NewPageCache(log *slog.Logger) *PageCache {
@@ -19,6 +25,7 @@ func NewPageCache(log *slog.Logger) *PageCache {
 func (pc *PageCache) Read(id PageID) *Node {
 	for _, node := range pc.nodes {
 		if node.PageID == id {
+			pc.stats.Reads++
 			return node
 		}
 	}
@@ -37,6 +44,7 @@ func (pc *PageCache) Write(n *Node) *Node {
 	if !found {
 		pc.nodes = append(pc.nodes, n)
 	}
+	pc.stats.Writes++
 	return n
 }
 func (pc *PageCache) Allocate() *Node {
