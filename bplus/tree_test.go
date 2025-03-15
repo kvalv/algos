@@ -114,21 +114,26 @@ func TestInsert(t *testing.T) {
 		key   int
 		want  string
 	}{
+		// {
+		// 	input: "(ab)", // leaf
+		// 	key:   'c',
+		// 	want:  "(abc)",
+		// },
+		// {
+		// 	input: "(bcd)", // split, no root
+		// 	key:   'a',
+		// 	want:  "(c(ab)(cd))",
+		// },
 		{
-			input: "(ab)",
-			key:   'c',
-			want:  "(abc)",
-		},
-		{
-			input: "(bcd)",
+			input: "(e(bcd)(efg))", // split, existing root
 			key:   'a',
-			want:  "(c(ab)(cd))",
+			want:  "(ce(ab)(cd)(efg))",
 		},
 	}
 
 	for _, tc := range cases {
-		t.Run(fmt.Sprintf("%s/%d", tc.input, tc.key), func(t *testing.T) {
-			tree := FromString(2, tc.input, os.Stderr)
+		t.Run(fmt.Sprintf("%s/%s", tc.input, keyString(tc.key)), func(t *testing.T) {
+			tree := FromString(3, tc.input, os.Stderr)
 			tree.Insert(tc.key, 0)
 			expectTree(t, tc.want, tree)
 		})

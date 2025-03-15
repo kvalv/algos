@@ -19,6 +19,9 @@ func (n *Node) String() string {
 }
 
 func (T *BTree) String(n *Node) string {
+	if n == nil {
+		panic("BTree.String(): n is nil")
+	}
 	var s strings.Builder
 	s.WriteString("(")
 	for _, k := range n.Keys {

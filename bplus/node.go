@@ -5,7 +5,7 @@ type Node struct {
 	Keys []int
 	Leaf bool
 
-	RightSibling *Node
+	RightSibling *PageID
 
 	// leaf: has N-1 keys and N pointers
 	// For leaf, the last pointer points to sibling node (next) - not back
@@ -21,4 +21,11 @@ func (n *Node) median() (index int, key int) {
 	index = len(n.Keys) / 2
 	key = n.Keys[index]
 	return
+}
+
+func (n *Node) MinKey() int {
+	if len(n.Keys) == 0 {
+		panic("FirstKey: Node has no keys")
+	}
+	return n.Keys[0]
 }

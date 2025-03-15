@@ -53,10 +53,10 @@ func FromString(n int, input string, w io.Writer) *BTree {
 		case '(':
 			tmp := T.pageCache.Allocate()
 			tmp.Leaf = true
-			p := top()
-			if p != nil {
-				p.Leaf = false
-				p.Children = append(p.Children, tmp.PageID)
+			parent := top()
+			if parent != nil {
+				parent.Leaf = false
+				parent.Children = append(parent.Children, tmp.PageID)
 			}
 			stack = append(stack, tmp)
 		case ')':
@@ -78,8 +78,10 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	var prev *Node
 	T.WalkNodes(T.Root, func(n *Node) {
 		if n.Leaf {
+			n.Pointers = append(n.Pointers, n.Keys...) // set values
 			if prev != nil {
-				prev.RightSibling = n
+				tmp := n.PageID
+				prev.RightSibling = &tmp
 			}
 			prev = n
 		}

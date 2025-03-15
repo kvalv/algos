@@ -164,7 +164,7 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 				return nil
 			}
 			// otherwise visit next sibling
-			C = C.RightSibling
+			C = T.pageCache.Read(*C.RightSibling)
 			j = 0
 			m = Match{Index: j, Node: C}
 		}
@@ -179,7 +179,9 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 func (T *BTree) Insert(key int, value PageID) {
 	node := T.Root
 
+	var parent *Node
 	for !node.Leaf {
+		parent = node
 		if i := T.insertionIndex(node, key); i != nil {
 			node = T.read(node, *i)
 		} else {
@@ -191,11 +193,45 @@ func (T *BTree) Insert(key int, value PageID) {
 	i := T.insertionIndex(node, key)
 	if i == nil {
 		node.Keys = append(node.Keys, key)
-		node.Children = append(node.Children, value)
+		node.Children = append(node.Pointers, value)
 	} else {
 		node.Keys = slices.Insert(node.Keys, *i, key)
-		node.Children = slices.Insert(node.Children, *i, value)
+		node.Children = slices.Insert(node.Pointers, *i, value)
 	}
 
 	// split step ... if
+	if len(node.Keys) <= T.n {
+		return // we're done!
+	}
+
+	// otherwise we need to split
+	j := (T.n + 1) / 2 // ceil[n/2]
+	right := T.SplitLeaf(node, j)
+
+	if parent == nil {
+		// create a new root
+		root := T.allocate()
+		root.Keys = []int{right.MinKey()}
+		root.Children = []PageID{node.PageID, right.PageID}
+		T.Root = root
+	} else {
+		panic("TODO: add key to existing parent")
+	}
+
+}
+
+// Splits current node at index i, returning the new node, residing on the right side
+func (T *BTree) SplitLeaf(node *Node, i int) *Node {
+	right := T.pageCache.Allocate()
+
+	right.Pointers = node.Pointers[i:]
+	right.Keys = node.Keys[i:]
+	right.RightSibling = node.RightSibling
+
+	node.Pointers = node.Pointers[:i]
+	node.Keys = node.Keys[:i]
+	tmp := right.PageID
+	node.RightSibling = &tmp
+
+	return right
 }

@@ -1,6 +1,9 @@
 package bplus
 
-import "log/slog"
+import (
+	"fmt"
+	"log/slog"
+)
 
 type PageID = int
 
@@ -29,7 +32,7 @@ func (pc *PageCache) Read(id PageID) *Node {
 			return node
 		}
 	}
-	return nil
+	panic(fmt.Sprintf("PageCache.Read: no node found with id %d", id))
 }
 
 func (pc *PageCache) Write(n *Node) *Node {
