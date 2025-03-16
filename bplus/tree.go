@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 )
 
 type BTree struct {
@@ -15,29 +16,40 @@ type BTree struct {
 	pageCache *PageCache
 }
 
+func (T *BTree) isValid() error {
+	var err error
+	T.WalkNodes(T.Root, func(n *Node) {
+		if len(n.Keys) > 2*T.n-1 {
+			err = (fmt.Errorf("node %s has %d keys", n, len(n.Keys)))
+		}
+		if !n.Leaf && len(n.Keys)+1 != len(n.Children) {
+			err = fmt.Errorf("BTree violation: node %s has %d keys and %d children - expected %d children",
+				n,
+				len(n.Keys),
+				len(n.Children),
+				len(n.Keys)+1)
+		}
+		if len(n.Children) > 0 && n.Leaf {
+			var childRepr []string
+			for _, id := range n.Children {
+				child := T.pageCache.Read(id)
+				childRepr = append(childRepr, child.String())
+			}
+			err = (fmt.Errorf("Node %q is a leaf node with %d children; children=%q", n, len(n.Children), strings.Join(childRepr, ", ")))
+		}
+		if len(n.Children) == 0 && !n.Leaf {
+			err = (fmt.Errorf("Node %q is not a leaf, but has children", n))
+		}
+	})
+	return err
+}
 func (T *BTree) validate() {
 	if !T.dbg {
 		return
 	}
-	T.WalkNodes(T.Root, func(n *Node) {
-		if len(n.Keys) > 2*T.n-1 {
-			panic(fmt.Sprintf("node %s has %d keys", n, len(n.Keys)))
-		}
-		if !n.Leaf && len(n.Keys)+1 != len(n.Children) {
-			panic(fmt.Sprintf("BTree violation: node %s has %d and %d children - expected %d children",
-				n,
-				len(n.Keys),
-				len(n.Children),
-				len(n.Keys)+1),
-			)
-		}
-		if len(n.Children) > 0 && n.Leaf {
-			panic("Node is a leaf - but has children")
-		}
-		if len(n.Children) == 0 && !n.Leaf {
-			panic("Node is not a leaf, but has children")
-		}
-	})
+	if err := T.isValid(); err != nil {
+		panic(err)
+	}
 }
 func (T *BTree) read(n *Node, i int) *Node {
 	if len(n.Children) < i-1 || i < 0 {
@@ -51,6 +63,26 @@ func (T *BTree) write(n *Node) *Node {
 }
 func (T *BTree) allocate() *Node {
 	return T.pageCache.Allocate()
+}
+
+func (T *BTree) String(n *Node) string {
+	if n == nil {
+		panic("BTree.String(): n is nil")
+	}
+	var s strings.Builder
+	s.WriteString("(")
+	for _, k := range n.Keys {
+		s.WriteString(keyString(k))
+	}
+	// if !n.Leaf { // I think we're using .Children for pointers, too...
+	for i := range n.Children {
+		c := T.read(n, i)
+		fmt.Fprintf(&s, "%s", T.String(c))
+	}
+	// }
+	s.WriteString(")")
+
+	return s.String()
 }
 
 func (T *BTree) WalkNodes(n *Node, f func(n *Node)) {
@@ -178,6 +210,7 @@ func (T *BTree) Range(key, upper int) RangeIterator {
 
 func (T *BTree) Insert(key int, value PageID) {
 	node := T.Root
+	defer T.validate()
 
 	var stack []*Node
 	for !node.Leaf {
@@ -188,16 +221,19 @@ func (T *BTree) Insert(key int, value PageID) {
 			node = T.lastChild(node)
 		}
 	}
+	fmt.Printf("node before... %s with %d children\n", T.String(node), len(node.Children))
 
 	// now we are at the leaf, and we can insert...
 	i := T.insertionIndex(key, node)
 	if i == nil {
 		node.Keys = append(node.Keys, key)
-		node.Children = append(node.Pointers, value)
+		node.Values = append(node.Values, value)
 	} else {
 		node.Keys = slices.Insert(node.Keys, *i, key)
-		node.Children = slices.Insert(node.Pointers, *i, value)
+		node.Values = slices.Insert(node.Values, *i, value)
 	}
+
+	fmt.Printf("node now has %d children %s\n", len(node.Children), T.String(node))
 
 	if !T.NeedsSplit(node) {
 		return // we're done!
@@ -213,6 +249,8 @@ func (T *BTree) Insert(key int, value PageID) {
 		root := T.allocate()
 		root.Keys = []int{right.MinKey()}
 		root.Children = []PageID{node.PageID, right.PageID}
+		node.Leaf = false
+		right.Leaf = false
 		T.Root = root
 		return
 	}
@@ -221,6 +259,7 @@ func (T *BTree) Insert(key int, value PageID) {
 	// and need to split, or it's not necessary to split anymore
 
 	slices.Reverse(stack) // stack now consists of the following nodes+order: [parent, grandparent, ...]
+	fmt.Printf("we have something to do\n")
 
 	pageID := right.PageID
 	minKey := right.MinKey()
@@ -239,9 +278,14 @@ func (T *BTree) Insert(key int, value PageID) {
 		if !T.NeedsSplit(par) {
 			break
 		}
+		fmt.Printf("need to split parent %q\n", T.String(par))
 		right := T.Split(par, (T.n+1)/2) //
+		fmt.Printf("split done\nleft=%q\nright=%q\n", T.String(par), T.String(right))
 		pageID = par.PageID
 		minKey = right.MinKey()
+
+		// now need to assign to parent??
+		fmt.Printf("will assign to parent, which is %v\n", par)
 	}
 }
 
@@ -252,16 +296,21 @@ func (T *BTree) NeedsSplit(n *Node) bool {
 // Splits current node at index i, returning the new node, residing on the right side
 func (T *BTree) Split(node *Node, i int) *Node {
 	right := T.pageCache.Allocate()
+	right.Leaf = node.Leaf
 
 	right.Keys = node.Keys[i:]
 	node.Keys = node.Keys[:i]
 
 	if node.Leaf {
-		right.Pointers = node.Pointers[i:]
-		node.Pointers = node.Pointers[:i]
+		right.Values = node.Values[i:]
+		node.Values = node.Values[:i]
 	} else {
-		right.Children = node.Children[i:]
-		node.Children = node.Children[:i]
+		right.Children = node.Children[i+1:]
+		node.Children = node.Children[:i+1]
+		if len(right.Keys) == len(right.Children) {
+			right.Keys = right.Keys[1:]
+			fmt.Printf("should remove one, eh?\n")
+		}
 	}
 
 	right.RightSibling = node.RightSibling

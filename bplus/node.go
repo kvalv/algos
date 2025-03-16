@@ -1,5 +1,7 @@
 package bplus
 
+import "strings"
+
 type Node struct {
 	PageID
 	Keys []int
@@ -9,8 +11,8 @@ type Node struct {
 
 	// leaf: has N-1 keys and N pointers
 	// For leaf, the last pointer points to sibling node (next) - not back
-	Children []PageID // ??
-	Pointers []PageID
+	Children []PageID // child nodes
+	Values   []PageID // things we point to
 }
 
 func (n *Node) median() (index int, key int) {
@@ -28,4 +30,17 @@ func (n *Node) MinKey() int {
 		panic("FirstKey: Node has no keys")
 	}
 	return n.Keys[0]
+}
+
+func (n *Node) String() string {
+	if n == nil {
+		return "nil"
+	}
+	var s strings.Builder
+	s.WriteString("(")
+	for _, k := range n.Keys {
+		s.WriteString(keyString(k))
+	}
+	s.WriteString(")")
+	return s.String()
 }

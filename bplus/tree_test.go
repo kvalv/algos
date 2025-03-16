@@ -124,11 +124,21 @@ func TestInsert(t *testing.T) {
 		// 	key:   'a',
 		// 	want:  "(c(ab)(cd))",
 		// },
+		// {
+		// 	input: "(e(bcd)(efg))", // split, existing root
+		// 	key:   'a',
+		// 	want:  "(ce(ab)(cd)(efg))",
+		// },
 		{
-			input: "(e(bcd)(efg))", // split, existing root
-			key:   'a',
-			want:  "(ce(ab)(cd)(efg))",
+			input: "(468(123)(45)(67)(89))",
+			key:   0,
+			want:  "(6(24(01)(23)(45))(8(67)(89)))", //
 		},
+		// {
+		// 	input: "(579(234)(56)(78)(9))", // root gets split
+		// 	key: 1,
+		// 	want: "
+		// },
 	}
 
 	for _, tc := range cases {
@@ -165,7 +175,7 @@ func expectMatch(t *testing.T, want, got *Match) {
 		return
 	}
 	if got.Node.String() != want.Node.String() {
-		t.Fatalf("unexpected node structure;\nwant= %s\ngot = %s", want.Node.String(), got.Node.String())
+		t.Fatalf("node structure mismatch;\nwant= %s\ngot = %s", want.Node.String(), got.Node.String())
 	}
 	if got.Index != want.Index {
 		t.Fatalf("unexpected index; want = %d, got = %d", want.Index, got.Index)
@@ -176,7 +186,7 @@ func expectTree(t *testing.T, want string, got *BTree) {
 	t.Helper()
 	gotStr := got.String(got.Root)
 	if gotStr != want {
-		t.Fatalf("unexpected tree structure;\nwant= %s\ngot = %s", want, gotStr)
+		t.Fatalf("tree structure mismatch;\nwant= %s\ngot = %s", want, gotStr)
 	}
 }
 func expectNode(t *testing.T, got *Node, want string) {

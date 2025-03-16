@@ -72,14 +72,14 @@ func FromString(n int, input string, w io.Writer) *BTree {
 	}
 
 	T.Root = root
-	T.validate()
 
 	// Add next child
 	var prev *Node
 	T.WalkNodes(T.Root, func(n *Node) {
 		if n.Leaf {
 			pointers := make([]PageID, len(n.Keys))
-			n.Pointers = pointers
+			n.Values = pointers
+			n.Children = nil
 			if prev != nil {
 				tmp := n.PageID
 				prev.RightSibling = &tmp
@@ -87,6 +87,8 @@ func FromString(n int, input string, w io.Writer) *BTree {
 			prev = n
 		}
 	})
+
+	T.validate()
 
 	return T
 }
