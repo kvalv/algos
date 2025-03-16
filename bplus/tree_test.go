@@ -114,31 +114,31 @@ func TestInsert(t *testing.T) {
 		key   int
 		want  string
 	}{
-		// {
-		// 	input: "(ab)", // leaf
-		// 	key:   'c',
-		// 	want:  "(abc)",
-		// },
-		// {
-		// 	input: "(bcd)", // split, no root
-		// 	key:   'a',
-		// 	want:  "(c(ab)(cd))",
-		// },
-		// {
-		// 	input: "(e(bcd)(efg))", // split, existing root
-		// 	key:   'a',
-		// 	want:  "(ce(ab)(cd)(efg))",
-		// },
+		{
+			input: "(ab)", // leaf
+			key:   'c',
+			want:  "(abc)",
+		},
+		{
+			input: "(bcd)", // split, no root
+			key:   'a',
+			want:  "(c(ab)(cd))",
+		},
+		{
+			input: "(e(bcd)(efg))", // split, existing root
+			key:   'a',
+			want:  "(ce(ab)(cd)(efg))",
+		},
 		{
 			input: "(468(123)(45)(67)(89))",
 			key:   0,
 			want:  "(6(24(01)(23)(45))(8(67)(89)))", //
 		},
-		// {
-		// 	input: "(579(234)(56)(78)(9))", // root gets split
-		// 	key: 1,
-		// 	want: "
-		// },
+		{
+			input: "(579(234)(56)(78)(9))", // root gets split
+			key:   1,
+			want:  "(7(35(12)(34)(56))(9(78)(9)))",
+		},
 	}
 
 	for _, tc := range cases {

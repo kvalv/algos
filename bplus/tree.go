@@ -221,71 +221,85 @@ func (T *BTree) Insert(key int, value PageID) {
 			node = T.lastChild(node)
 		}
 	}
-	fmt.Printf("node before... %s with %d children\n", T.String(node), len(node.Children))
+	stack = append(stack, node) // append the leaf, too
 
-	// now we are at the leaf, and we can insert...
+	// we'll loop over the nodes, bottom-up - starting with the leaf node
+	slices.Reverse(stack)
+
+	pageID := value
+	minKey := key
+	var par *Node
+	fmt.Printf("-- stack --\n")
+	for _, node := range stack {
+		fmt.Printf("%s\n", node.String())
+	}
+	fmt.Printf("-- stack end --\n")
+	for i, node := range stack {
+		// insert a given key and pageID into the parent node.
+		// We keep doing this while splitting is necessary
+		fmt.Printf("--- iteration start -- node=%s\n", node.String())
+		fmt.Printf("will insert %s in node %s\n", keyString(minKey), T.String(node))
+		T.insertInNode(node, minKey, pageID)
+
+		if !T.NeedsSplit(node) {
+			break
+		}
+		fmt.Printf("node needs split\n")
+		// otherwise we need to split. Split and add new key to parent
+		j := (T.n + 1) / 2 // ceil[n/2]
+		pre := T.String(node)
+		right, mk := T.Split(node, j)
+		if i+1 < len(stack) {
+			par = stack[i+1]
+		} else {
+			par = nil
+		}
+		var parStr string = "<nil>"
+		if par != nil {
+			parStr = par.String()
+		}
+		fmt.Printf("split done\n  start=%s\n  left=%s\n  right=%s\n  par=  %s\n", pre, T.String(node), T.String(right), parStr)
+		if par == nil {
+			fmt.Printf("parent is nil, so we create a new root node\n")
+			par = T.allocate()
+			par.Keys = []int{mk} // not sure of this
+			par.Children = []PageID{node.PageID, right.PageID}
+			par.Leaf = false
+			T.Root = par
+			fmt.Printf("root is now %s\n", T.String(par))
+			return // no need to continue down. we know we we're done
+		} else {
+			// T.insertInNode(par, right.MinKey(), right.PageID)
+			fmt.Printf("parent exists, will add %s to %s in next iteration\n", keyString(mk), par.String())
+		}
+
+		// otherwise, we have split and we need to register the new
+		// key to the parent.
+		// fmt.Printf("parent is %s and will insert %s\n", par, keyString(right.MinKey()))
+		minKey = mk // what if we remove extra keys?? then we're fucked
+		pageID = right.PageID
+
+	}
+}
+
+// inserts the key at the appropriate location. value is either a leaf value,
+// or a pointer to a child page, which is put to the RIGHT
+func (T *BTree) insertInNode(node *Node, key int, value PageID) {
 	i := T.insertionIndex(key, node)
 	if i == nil {
 		node.Keys = append(node.Keys, key)
-		node.Values = append(node.Values, value)
+		if node.Leaf {
+			node.Values = append(node.Values, value)
+		} else {
+			node.Children = append(node.Children, value) // seems about right
+		}
 	} else {
 		node.Keys = slices.Insert(node.Keys, *i, key)
-		node.Values = slices.Insert(node.Values, *i, value)
-	}
-
-	fmt.Printf("node now has %d children %s\n", len(node.Children), T.String(node))
-
-	if !T.NeedsSplit(node) {
-		return // we're done!
-	}
-
-	// otherwise we need to split
-	j := (T.n + 1) / 2 // ceil[n/2]
-
-	right := T.Split(node, j)
-
-	if len(stack) == 0 {
-		// create a new root
-		root := T.allocate()
-		root.Keys = []int{right.MinKey()}
-		root.Children = []PageID{node.PageID, right.PageID}
-		node.Leaf = false
-		right.Leaf = false
-		T.Root = root
-		return
-	}
-
-	// otherwise, insert into existing parent node. Keep doing that, until we're at the Root
-	// and need to split, or it's not necessary to split anymore
-
-	slices.Reverse(stack) // stack now consists of the following nodes+order: [parent, grandparent, ...]
-	fmt.Printf("we have something to do\n")
-
-	pageID := right.PageID
-	minKey := right.MinKey()
-	for _, par := range stack {
-		// insert a given key and pageID into the parent node.
-		// We keep doing this while splitting is necessary
-		i := T.insertionIndex(key, par)
-		if i == nil {
-			par.Keys = append(par.Keys, minKey)
-			par.Children = append(par.Children, pageID) // seems about right
+		if node.Leaf {
+			node.Values = slices.Insert(node.Values, *i+1, value)
 		} else {
-			par.Keys = slices.Insert(par.Keys, *i, minKey)
-			par.Children = slices.Insert(par.Children, *i+1, pageID)
+			node.Children = slices.Insert(node.Children, *i+1, value)
 		}
-
-		if !T.NeedsSplit(par) {
-			break
-		}
-		fmt.Printf("need to split parent %q\n", T.String(par))
-		right := T.Split(par, (T.n+1)/2) //
-		fmt.Printf("split done\nleft=%q\nright=%q\n", T.String(par), T.String(right))
-		pageID = par.PageID
-		minKey = right.MinKey()
-
-		// now need to assign to parent??
-		fmt.Printf("will assign to parent, which is %v\n", par)
 	}
 }
 
@@ -293,29 +307,32 @@ func (T *BTree) NeedsSplit(n *Node) bool {
 	return T.n == len(n.Keys)-1
 }
 
-// Splits current node at index i, returning the new node, residing on the right side
-func (T *BTree) Split(node *Node, i int) *Node {
+// Splits current node at index i, returning the new node, along with the key that should
+// be used as the separation key for parent nodes
+func (T *BTree) Split(node *Node, i int) (*Node, int) {
 	right := T.pageCache.Allocate()
 	right.Leaf = node.Leaf
 
 	right.Keys = node.Keys[i:]
 	node.Keys = node.Keys[:i]
 
-	if node.Leaf {
-		right.Values = node.Values[i:]
-		node.Values = node.Values[:i]
-	} else {
-		right.Children = node.Children[i+1:]
-		node.Children = node.Children[:i+1]
-		if len(right.Keys) == len(right.Children) {
-			right.Keys = right.Keys[1:]
-			fmt.Printf("should remove one, eh?\n")
-		}
-	}
-
 	right.RightSibling = node.RightSibling
 	tmp := right.PageID
 	node.RightSibling = &tmp
 
-	return right
+	if node.Leaf {
+		right.Values = node.Values[i:]
+		node.Values = node.Values[:i]
+		return right, right.MinKey()
+	} else {
+		right.Children = node.Children[i+1:]
+		node.Children = node.Children[:i+1]
+		if len(right.Keys) == len(right.Children) {
+			fmt.Printf("removing extraneous key %s -> now keys=%v\n", keyString(right.Keys[0]), right.Keys[1:])
+			separationKey := right.Keys[0]
+			right.Keys = right.Keys[1:]
+			return right, separationKey
+		}
+		return right, right.Keys[0]
+	}
 }
